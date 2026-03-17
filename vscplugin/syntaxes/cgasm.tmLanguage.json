@@ -56,7 +56,7 @@
 		"chars": {
 			"patterns": [
 				{
-					"name": "constant.character.cgasm",
+					"name": "string",
 					"match": "'.'"
 				}
 			]
@@ -66,7 +66,7 @@
 				{
 					"begin": "\"",
 					"end": "\"",
-					"name": "constant.character.cgasm",
+					"name": "string.cgasm",
 					"match": ""
 				},
 				{
