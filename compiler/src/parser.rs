@@ -1,9 +1,13 @@
-use crate::lexer::{Token, Unit};
+use crate::{
+    lexer::{Token, Unit},
+    run,
+};
 use std::{
     cell::RefCell,
     cmp::Ordering,
     collections::{HashMap, VecDeque},
     ffi::CString,
+    fs, i64,
     marker::PhantomData,
     str::FromStr,
 };
@@ -175,6 +179,7 @@ impl<'lu> LineWalker<'lu> {
                     "writestack" => Instruction::parse_with_nargs(self, 1, InstrType::WriteStack),
                     "callif" => Instruction::parse_with_nargs(self, 2, InstrType::CallIf),
                     "hasinput" => Instruction::parse_with_nargs(self, 1, InstrType::HasInput),
+                    "file" => Instruction::parse_with_varargs(self, InstrType::File),
                     _ => {
                         return ParseLine::error(format!("invalid instruction: {ident}"), self.src);
                     }
@@ -283,6 +288,13 @@ impl<'lu> ParseUnit<'lu> {
                         "failed to match for instruction {instr:?}"
                     )
                 }
+                IT::File => assert!(
+                    matches!(
+                        args.next().unwrap(),
+                        IA::DoubleMemory(_) | IA::Memory(_) | IA::String(_)
+                    ),
+                    "failed to match for instruction {instr:?}"
+                ),
             }
 
             match instr.ty {
@@ -338,6 +350,16 @@ impl<'lu> ParseUnit<'lu> {
                         "failed to match for instruction {instr:?}"
                     )
                 }
+                IT::File => assert!(
+                    matches!(
+                        args.next(),
+                        None | Some(IA::Memory(_))
+                            | Some(IA::DoubleMemory(_))
+                            | Some(IA::Integer(_))
+                            | Some(IA::String(_))
+                    ),
+                    "failed to match for instruction {instr:?}"
+                ),
             }
 
             match instr.ty {
@@ -377,6 +399,15 @@ impl<'lu> ParseUnit<'lu> {
                         "failed to match for instruction {instr:?}"
                     )
                 }
+                IT::File => assert!(
+                    matches!(
+                        args.next(),
+                        None | Some(IA::Memory(_))
+                            | Some(IA::DoubleMemory(_))
+                            | Some(IA::Integer(_))
+                    ),
+                    "failed to match for instruction {instr:?}"
+                ),
             }
         }
     }
@@ -418,10 +449,9 @@ impl<'lu> ParseUnit<'lu> {
         let modify_in_place = |memarg, arg, f: fn(i64, i64) -> i64| {
             let at_place = arg_to_integer(memarg);
             let at_arg = arg_to_integer(arg);
+            let t = arg_to_memory(memarg);
 
-            memory
-                .borrow_mut()
-                .insert(arg_to_memory(memarg), f(at_place, at_arg));
+            memory.borrow_mut().insert(t, f(at_place, at_arg));
         };
 
         let mut ip: i64 = self.start;
@@ -663,6 +693,90 @@ impl<'lu> ParseUnit<'lu> {
                         memory.borrow_mut().insert(memaddr, 0);
                     }
                 }
+                InstrType::File => {
+                    let mut string = String::new();
+
+                    match &instr.args[0] {
+                        InstrArg::DoubleMemory(_) | InstrArg::Memory(_) => {
+                            let mut memloc = arg_to_memory(&instr.args[0]);
+
+                            loop {
+                                let x = *memory.borrow().get(&memloc).unwrap_or(&0) as u8 as char;
+                                if x as u8 == 0 {
+                                    break;
+                                }
+                                memloc += 1;
+                                string.push(x);
+                            }
+                        }
+                        InstrArg::String(strng) => {
+                            string = strng.to_string_lossy().to_string();
+                        }
+                        _ => panic!(),
+                    }
+
+                    let mut args = Vec::new();
+
+                    if let Some(addr) = match &instr.args.get(1) {
+                        Some(InstrArg::DoubleMemory(memaddr)) => {
+                            Some(*memory.borrow().get(memaddr).unwrap_or(&0))
+                        }
+                        Some(InstrArg::Memory(memaddr)) => Some(*memaddr),
+                        Some(InstrArg::String(_)) => None,
+                        Some(_) => panic!(),
+                        None => None,
+                    } {
+                        let max_bytes = if let Some(arg) = &instr.args.get(2) {
+                            arg_to_integer(arg)
+                        } else {
+                            i64::MAX
+                        };
+
+                        let mut bytes_read = 0;
+                        loop {
+                            if bytes_read >= max_bytes {
+                                break;
+                            }
+                            let x = memory
+                                .borrow()
+                                .get(&(addr + bytes_read))
+                                .cloned()
+                                .unwrap_or(0);
+                            args.push(x);
+                            if x == 0 && max_bytes == i64::MAX {
+                                break;
+                            }
+                            bytes_read += 1;
+                        }
+                    }
+
+                    if let Some(InstrArg::String(strng)) = &instr.args.get(1) {
+                        let max_bytes = if let Some(arg) = instr.args.get(2) {
+                            arg_to_integer(arg)
+                        } else {
+                            i64::MAX
+                        };
+
+                        let bytes = strng.as_bytes();
+
+                        for i in 0..max_bytes.min(bytes.len() as i64) {
+                            args.push(bytes[i as usize] as i64)
+                        }
+                    }
+
+                    let file = fs::read_to_string(string);
+
+                    let exit_code = match file {
+                        Ok(file) => {
+                            run(&file, Some(args));
+                            0
+                        }
+
+                        Err(ferr) => ferr.raw_os_error().map(|x| x as i64).unwrap_or(i64::MIN),
+                    };
+
+                    memory.borrow_mut().insert(0, exit_code);
+                }
             }
             ip += 1;
         }
@@ -812,4 +926,5 @@ enum InstrType {
     WriteStack,
     CallIf,
     HasInput,
+    File,
 }

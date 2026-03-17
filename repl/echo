@@ -1,4 +1,0 @@
-'start:
-inputstr &0
-printstr &0
-jmp 'start

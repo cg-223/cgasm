@@ -10,7 +10,6 @@ pub fn run(code: &str, inputs: Option<Vec<i64>>) {
 
     let unit = Unit::lex_source(code);
     let mut parser = ParseUnit::parse(&unit);
-    println!("{:?}", parser.late_instrs());
     if let Some(inputs) = inputs {
         parser.add_inputs(inputs)
     }
