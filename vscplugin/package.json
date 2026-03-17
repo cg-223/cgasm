@@ -1,0 +1,25 @@
+{
+  "name": "cgasm",
+  "displayName": "cgasm",
+  "description": "some assembly notation",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.110.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "cgasm",
+      "aliases": ["cgasm", "cgasm"],
+      "extensions": [".cgasm"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "cgasm",
+      "scopeName": "source.cgasm",
+      "path": "./syntaxes/cgasm.tmLanguage.json"
+    }]
+  }
+}

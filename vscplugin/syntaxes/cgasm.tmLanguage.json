@@ -1,0 +1,80 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "cgasm",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#chars"
+		},
+		{
+			"include": "#strings"
+		},
+		{
+			"include": "#constants"
+		},
+		{
+			"include": "#comments"
+		}
+	],
+	"repository": {
+		"comments": {
+			"patterns": [{
+				"name": "comment.cgasm",
+				"match": "#.*"
+			}]
+		},
+		"keywords": {
+			"patterns": [
+				{
+					"name": "keyword.cgasm",
+					"match": "\\b(add|sub|mul|div|jif|set|cmp|eq|setif|print|call|ret|nop|input|inputstr|printstr|jmp|deref|retif|pop|push|readstack|writestack|callif|hasinput)\\b"
+				},
+				{
+					"name": "invalid.illegal",
+					"match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\b"
+				}
+			]
+		},
+		"constants": {
+			"patterns": [
+				{
+					"name": "markup.bold",
+					"match": "&"
+				},
+				{
+					"name": "constant.numeric.cgasm",
+					"match": "[0-9]+"
+				},
+				{
+					"name": "constant.numeric.cgasm",
+					"match": "-[0-9]+"
+				}
+			]
+		},
+		"chars": {
+			"patterns": [
+				{
+					"name": "constant.character.cgasm",
+					"match": "'.'"
+				}
+			]
+		},
+		"strings": {
+			"patterns": [
+				{
+					"begin": "\"",
+					"end": "\"",
+					"name": "constant.character.cgasm",
+					"match": ""
+				},
+				{
+					"name": "constant.character.escape",
+					"match": "'[a-z_]+:?"
+				}
+			]
+		}
+	},
+	"scopeName": "source.cgasm"
+}
