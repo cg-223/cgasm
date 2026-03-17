@@ -1,0 +1,91 @@
+# Memory can only be reserved by calling malloc.
+# Addresses under &100 is considered registers, and can be safely used.
+# Data between &100 and &1000 is the responsibility of malloc to do as it sees fit.
+# Basic bump allocator.
+# Pass: Requested length of allocation
+# Recieve: Memory address of allocation (at &0)
+'malloc:
+    cmp &0 1
+    eq &0 -1
+    setif &0 0 &cmp
+    retif &cmp
+    eq &100 0
+    callif 'malloc_init &cmp
+    push &1
+    set &1 &101
+    add &101 &0
+    set &&101 &0
+    add &101 16
+    set &0 &1
+    add &0 16
+    pop &1
+        ret
+
+'malloc_init:
+    set &100 1
+    set &101 2000
+        ret
+
+
+    
+# strcmp
+'strcmp:
+    push &0
+    push &1
+    push &2
+    push &3
+'strcmp_main:
+    set &2 &0
+    set &3 &1
+    deref &2
+    deref &3
+    cmp &2 &3
+    jif 'strcmp_end &cmp 
+    eq &2 0
+    jif 'strcmp_true &cmp
+    add &0 1
+    add &1 1
+    jmp 'strcmp_main
+'strcmp_true:
+    set &cmp 0
+'strcmp_end:
+    pop &3
+    pop &2
+    pop &1
+    pop &0
+        ret
+
+
+'start:
+    call 'test_if_asked
+        call 'exit
+
+'test_if_asked:
+    push &0
+    hasinput &0
+    eq &0 0
+    pop &0
+    retif &cmp
+    push &1
+    set &0 16
+    call 'malloc
+    inputstr &&0 16
+    set &1 &0
+    set &0 5
+    call 'malloc
+    set &&0 "test"
+    call 'strcmp
+    pop &1
+    retif &cmp
+    print "tested"
+
+
+
+# exit
+'exit:
+    set &1 &0
+    eq &1 0
+    jif 'final_exit &cmp
+    printstr &&1
+'final_exit:
+    jmp 100000000000000

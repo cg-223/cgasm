@@ -1,0 +1,5 @@
+'start:
+set &0 'a'
+inputstr &0
+printstr &0
+jmp 'start

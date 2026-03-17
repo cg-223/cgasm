@@ -1,0 +1,16 @@
+    set &100 100000
+    set &0 0
+    set &1 1
+    sub &101 &100
+    add &101 3
+    set &100 &101
+'bleh:
+    add &100 1
+    set &2 0
+    add &2 &1
+    add &2 &0
+    set &0 &1
+    set &1 &2
+    cmp &100 0
+    cmp &cmp 1
+jif 'bleh &cmp
