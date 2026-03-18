@@ -7,7 +7,7 @@ use std::{
     cmp::Ordering,
     collections::{HashMap, VecDeque},
     ffi::CString,
-    fs, i64,
+    fs,
     marker::PhantomData,
     str::FromStr,
 };
@@ -31,7 +31,7 @@ fn convert_to_linear(pu: &mut ParseUnit) {
     let mut lines = Vec::new();
 
     for (ln, line) in &pu.lines {
-        lines.push((ln, line))
+        lines.push((ln, line));
     }
 
     lines.sort_by_key(|x| x.0);
@@ -57,7 +57,7 @@ fn convert_to_linear(pu: &mut ParseUnit) {
 
             label_to_instr_point.insert(label.str, *point);
         } else {
-            eprintln!("Failed to match label {label:?}")
+            eprintln!("Failed to match label {label:?}");
         }
     }
 
@@ -75,7 +75,7 @@ fn convert_to_linear(pu: &mut ParseUnit) {
             if let InstrArg::Label(lbl_name) = arg
                 && let Some(x) = label_to_instr_point.get(lbl_name.as_str())
             {
-                *arg = InstrArg::Integer(*x as i64)
+                *arg = InstrArg::Integer(*x as i64);
             }
         }
     }
@@ -151,7 +151,6 @@ impl<'lu> LineWalker<'lu> {
 
     fn parse(&mut self) -> ParseLine<'lu> {
         match self.next() {
-            None => ParseLine::empty(),
             Some(Token::Ident(ident)) => {
                 let instr = match ident.as_str() {
                     "add" => Instruction::parse_with_nargs(self, 2, InstrType::Add),
@@ -179,7 +178,11 @@ impl<'lu> LineWalker<'lu> {
                     "writestack" => Instruction::parse_with_nargs(self, 1, InstrType::WriteStack),
                     "callif" => Instruction::parse_with_nargs(self, 2, InstrType::CallIf),
                     "hasinput" => Instruction::parse_with_nargs(self, 1, InstrType::HasInput),
-                    "file" => Instruction::parse_with_varargs(self, InstrType::File),
+                    // "file" => Instruction::parse_with_varargs(self, InstrType::File),
+                    "fileinfo" => Instruction::parse_with_nargs(self, 2, InstrType::FileInfo),
+                    "readfile" => Instruction::parse_with_nargs(self, 2, InstrType::ReadFile),
+                    "writefile" => Instruction::parse_with_nargs(self, 1, InstrType::WriteFile),
+                    "load" => Instruction::parse_with_nargs(self, 1, InstrType::Load),
                     _ => {
                         return ParseLine::error(format!("invalid instruction: {ident}"), self.src);
                     }
@@ -193,7 +196,7 @@ impl<'lu> LineWalker<'lu> {
                     Err(e) => ParseLine::error(e, self.src),
                 }
             }
-            Some(Token::Label(_)) | Some(Token::None) => ParseLine::empty(),
+            None | Some(Token::Label(_) | Token::None) => ParseLine::empty(),
             Some(tok) => ParseLine::error(format!("invalid start of line: {tok:?}"), self.src),
         }
     }
@@ -238,15 +241,16 @@ impl<'lu> ParseUnit<'lu> {
         }
     }
 
+    #[must_use]
     pub fn late_instrs(&self) -> &[Instruction] {
         &self.late_linear
     }
 
     pub fn validate_instrs(&self) {
         for instr in self.late_instrs() {
-            let mut args = instr.args.iter();
             use InstrArg as IA;
             use InstrType as IT;
+            let mut args = instr.args.iter();
             match instr.ty {
                 IT::Nop | IT::Ret => assert!(
                     args.next().is_none(),
@@ -265,7 +269,8 @@ impl<'lu> ParseUnit<'lu> {
                 | IT::Pop
                 | IT::ReadStack
                 | IT::WriteStack
-                | IT::HasInput => assert!(
+                | IT::HasInput
+                | IT::Load => assert!(
                     matches!(args.next().unwrap(), IA::Memory(_) | IA::DoubleMemory(_)),
                     "failed to match for instruction {instr:?}"
                 ),
@@ -276,19 +281,18 @@ impl<'lu> ParseUnit<'lu> {
                 | IT::Cmp
                 | IT::Jmp
                 | IT::Jif
-                | IT::Push => {
-                    assert!(matches!(
-                        args.next().unwrap(),
-                        IA::Integer(_) | IA::Memory(_) | IA::DoubleMemory(_)
-                    ))
-                }
+                | IT::Push => assert!(matches!(
+                    args.next().unwrap(),
+                    IA::Integer(_) | IA::Memory(_) | IA::DoubleMemory(_)
+                )),
+
                 IT::Print => {
                     assert!(
                         matches!(args.next().unwrap(), _),
                         "failed to match for instruction {instr:?}"
-                    )
+                    );
                 }
-                IT::File => assert!(
+                IT::ReadFile | IT::FileInfo | IT::WriteFile => assert!(
                     matches!(
                         args.next().unwrap(),
                         IA::DoubleMemory(_) | IA::Memory(_) | IA::String(_)
@@ -308,12 +312,11 @@ impl<'lu> ParseUnit<'lu> {
                 | IT::Input
                 | IT::Pop
                 | IT::Retif
-                | IT::HasInput => {
-                    assert!(
-                        args.next().is_none(),
-                        "failed to match for instruction {instr:?}"
-                    )
-                }
+                | IT::HasInput => assert!(
+                    args.next().is_none(),
+                    "failed to match for instruction {instr:?}"
+                ),
+
                 IT::Add
                 | IT::Sub
                 | IT::Mul
@@ -338,28 +341,30 @@ impl<'lu> ParseUnit<'lu> {
                 IT::PrintStr | IT::InputStr => assert!(
                     matches!(
                         args.next(),
-                        None | Some(IA::Integer(_))
-                            | Some(IA::Memory(_))
-                            | Some(IA::DoubleMemory(_))
+                        None | Some(IA::Integer(_) | IA::Memory(_) | IA::DoubleMemory(_))
                     ),
                     "failed to match for instruction {instr:?}"
                 ),
-                IT::CallIf | IT::Jif => {
-                    assert!(
-                        matches!(args.next().unwrap(), IA::Memory(_) | IA::DoubleMemory(_)),
-                        "failed to match for instruction {instr:?}"
-                    )
-                }
-                IT::File => assert!(
+                IT::CallIf | IT::Jif => assert!(
+                    matches!(args.next().unwrap(), IA::Memory(_) | IA::DoubleMemory(_)),
+                    "failed to match for instruction {instr:?}"
+                ),
+
+                IT::ReadFile | IT::FileInfo => assert!(
+                    matches!(args.next().unwrap(), IA::Memory(_) | IA::DoubleMemory(_)),
+                    "failed to match for instruction {instr:?}"
+                ),
+                IT::WriteFile => assert!(
                     matches!(
-                        args.next(),
-                        None | Some(IA::Memory(_))
-                            | Some(IA::DoubleMemory(_))
-                            | Some(IA::Integer(_))
-                            | Some(IA::String(_))
+                        args.next().unwrap(),
+                        IA::Memory(_) | IA::DoubleMemory(_) | IA::String(_)
                     ),
                     "failed to match for instruction {instr:?}"
                 ),
+                IT::Load => assert!(matches!(
+                    args.next(),
+                    None | Some(IA::Memory(_) | IA::DoubleMemory(_) | IA::String(_))
+                )),
             }
 
             match instr.ty {
@@ -386,28 +391,23 @@ impl<'lu> ParseUnit<'lu> {
                 | IT::CallIf
                 | IT::Jif
                 | IT::WriteStack
-                | IT::HasInput => {
-                    assert!(
-                        args.next().is_none(),
-                        "failed to match for instruction {instr:?}"
-                    )
-                }
-
-                IT::Setif => {
-                    assert!(
-                        matches!(args.next().unwrap(), IA::Memory(_) | IA::DoubleMemory(_)),
-                        "failed to match for instruction {instr:?}"
-                    )
-                }
-                IT::File => assert!(
-                    matches!(
-                        args.next(),
-                        None | Some(IA::Memory(_))
-                            | Some(IA::DoubleMemory(_))
-                            | Some(IA::Integer(_))
-                    ),
+                | IT::HasInput
+                | IT::ReadFile
+                | IT::FileInfo
+                | IT::WriteFile => assert!(
+                    args.next().is_none(),
                     "failed to match for instruction {instr:?}"
                 ),
+
+                IT::Setif => assert!(
+                    matches!(args.next().unwrap(), IA::Memory(_) | IA::DoubleMemory(_)),
+                    "failed to match for instruction {instr:?}"
+                ),
+
+                IT::Load => assert!(matches!(
+                    args.next(),
+                    None | Some(IA::Memory(_) | IA::DoubleMemory(_) | IA::Integer(_))
+                )),
             }
         }
     }
@@ -439,7 +439,7 @@ impl<'lu> ParseUnit<'lu> {
 
         let get_arg_to_integer = |arg: &InstrArg| -> Option<i64> {
             match arg {
-                InstrArg::Memory(mem) => memory.borrow().get(mem).cloned(),
+                InstrArg::Memory(mem) => memory.borrow().get(mem).copied(),
                 InstrArg::Integer(i) => Some(*i),
                 InstrArg::None => None,
                 _ => panic!(),
@@ -454,6 +454,26 @@ impl<'lu> ParseUnit<'lu> {
             memory.borrow_mut().insert(t, f(at_place, at_arg));
         };
 
+        let arg_to_string = |ref arg: &InstrArg| -> String {
+            match arg {
+                InstrArg::DoubleMemory(_) | InstrArg::Memory(_) => {
+                    let mut string = String::new();
+                    let mut memloc = arg_to_memory(arg);
+
+                    loop {
+                        let x = *memory.borrow().get(&memloc).unwrap_or(&0) as u8 as char;
+                        if x as u8 == 0 {
+                            break string;
+                        }
+                        memloc += 1;
+                        string.push(x);
+                    }
+                }
+                InstrArg::String(strng) => strng.to_string_lossy().to_string(),
+                _ => panic!(),
+            }
+        };
+
         let mut ip: i64 = self.start;
 
         while let Some(instr) = self.late_linear.get(ip as usize) {
@@ -461,21 +481,21 @@ impl<'lu> ParseUnit<'lu> {
             println!("executing instr {instr:?}");
             match instr.ty {
                 InstrType::Nop => {}
-                InstrType::Print => match &instr.args[0] {
+                InstrType::Print => match &&instr.args[0] {
                     InstrArg::Float(flt) => println!("{flt}"),
                     InstrArg::Integer(int) => println!("{int}"),
                     InstrArg::Memory(memaddr) => {
                         println!("{}", memory.borrow_mut().entry(*memaddr).or_insert(0))
                     }
-                    InstrArg::DoubleMemory(memaddr) => {
-                        println!(
-                            "{}",
-                            memory
-                                .borrow()
-                                .get(memory.borrow().get(memaddr).unwrap_or(&0))
-                                .unwrap_or(&0)
-                        )
-                    }
+
+                    InstrArg::DoubleMemory(memaddr) => println!(
+                        "{}",
+                        memory
+                            .borrow()
+                            .get(memory.borrow().get(memaddr).unwrap_or(&0))
+                            .unwrap_or(&0)
+                    ),
+
                     InstrArg::Label(lbl) => println!("'{lbl}"),
                     InstrArg::String(str) => println!("{}", str.to_string_lossy()),
                     InstrArg::None => println!("None"),
@@ -493,7 +513,7 @@ impl<'lu> ParseUnit<'lu> {
                         strng.push(x);
                     }
 
-                    println!("{strng}")
+                    println!("{strng}");
                 }
                 InstrType::Add => {
                     modify_in_place(&instr.args[0], &instr.args[1], |x, y| x + y);
@@ -508,9 +528,9 @@ impl<'lu> ParseUnit<'lu> {
                     modify_in_place(&instr.args[0], &instr.args[1], |x, y| x * y);
                 }
                 InstrType::Set => {
-                    if matches!(instr.args[1], InstrArg::Integer(_) | InstrArg::Memory(_)) {
+                    if matches!(&instr.args[1], InstrArg::Integer(_) | InstrArg::Memory(_)) {
                         modify_in_place(&instr.args[0], &instr.args[1], |_, y| y);
-                    } else if let InstrArg::String(cstr) = &instr.args[1] {
+                    } else if let InstrArg::String(cstr) = &&instr.args[1] {
                         let mut memloc = arg_to_memory(&instr.args[0]);
                         for byte in cstr.as_bytes() {
                             memory.borrow_mut().insert(memloc, *byte as i64);
@@ -587,13 +607,7 @@ impl<'lu> ParseUnit<'lu> {
                     let first = arg_to_integer(&instr.args[0]);
                     let second = arg_to_integer(&instr.args[1]);
 
-                    memory.borrow_mut().insert(
-                        -1,
-                        match first.eq(&second) {
-                            true => 1,
-                            false => 0,
-                        },
-                    );
+                    memory.borrow_mut().insert(-1, i64::from(first.eq(&second)));
                 }
                 InstrType::Jmp => {
                     let target = arg_to_integer(&instr.args[0]);
@@ -654,7 +668,7 @@ impl<'lu> ParseUnit<'lu> {
                             if memloc - origloc >= maxn {
                                 break;
                             }
-                            memory.borrow_mut().insert(memloc, *byte as i64);
+                            memory.borrow_mut().insert(memloc, i64::from(*byte));
                             memloc += 1;
                         }
 
@@ -687,16 +701,68 @@ impl<'lu> ParseUnit<'lu> {
                 }
                 InstrType::HasInput => {
                     let memaddr = arg_to_integer(&instr.args[0]);
-                    if !inputs.is_empty() {
-                        memory.borrow_mut().insert(memaddr, 1);
-                    } else {
+                    if inputs.is_empty() {
                         memory.borrow_mut().insert(memaddr, 0);
+                    } else {
+                        memory.borrow_mut().insert(memaddr, 1);
                     }
                 }
-                InstrType::File => {
+                InstrType::FileInfo => {
+                    let file_name = arg_to_string(&instr.args[0]);
+                    println!("{file_name}");
+                    let bytes = fs::metadata(file_name).map_or(-1, |x| x.len() as i64);
+                    let memaddr = arg_to_memory(&instr.args[1]);
+                    memory.borrow_mut().insert(memaddr, bytes);
+                }
+                InstrType::ReadFile => {
+                    let file_name = arg_to_string(&instr.args[0]);
+                    let memaddr = arg_to_memory(&instr.args[1]);
+                    let file = fs::read_to_string(file_name).unwrap();
+
+                    for (n, byte) in file.as_bytes().iter().enumerate() {
+                        memory.borrow_mut().insert(memaddr + n as i64, *byte as i64);
+                    }
+
+                    memory.borrow_mut().insert(memaddr + file.len() as i64, 0);
+                }
+                InstrType::WriteFile => {
+                    let file_name = arg_to_string(&instr.args[0]);
+                    let file_data = arg_to_string(&instr.args[1]);
+
+                    fs::write(file_name, file_data).unwrap();
+                }
+                InstrType::Load => {
+                    let data = arg_to_string(&instr.args[0]);
+
+                    let mut args = Vec::new();
+
+                    if let Some(arg) = instr.args.get(1) {
+                        let max_bytes = instr.args.get(2).map_or(i64::MAX, &arg_to_integer);
+                        let addr = arg_to_memory(arg);
+                        let mut bytes_read = 0;
+                        loop {
+                            if bytes_read >= max_bytes {
+                                break;
+                            }
+                            let x = memory
+                                .borrow()
+                                .get(&(addr + bytes_read))
+                                .copied()
+                                .unwrap_or(0);
+                            args.push(x);
+                            if x == 0 && max_bytes == i64::MAX {
+                                break;
+                            }
+                            bytes_read += 1;
+                        }
+                    }
+
+                    run(&data, Some(args));
+                }
+                InstrType::Add => {
                     let mut string = String::new();
 
-                    match &instr.args[0] {
+                    match &&instr.args[0] {
                         InstrArg::DoubleMemory(_) | InstrArg::Memory(_) => {
                             let mut memloc = arg_to_memory(&instr.args[0]);
 
@@ -709,8 +775,8 @@ impl<'lu> ParseUnit<'lu> {
                                 string.push(x);
                             }
                         }
-                        InstrArg::String(strng) => {
-                            string = strng.to_string_lossy().to_string();
+                        InstrArg::String(cstrng) => {
+                            string = cstrng.to_string_lossy().to_string();
                         }
                         _ => panic!(),
                     }
@@ -722,15 +788,10 @@ impl<'lu> ParseUnit<'lu> {
                             Some(*memory.borrow().get(memaddr).unwrap_or(&0))
                         }
                         Some(InstrArg::Memory(memaddr)) => Some(*memaddr),
-                        Some(InstrArg::String(_)) => None,
+                        Some(InstrArg::String(_)) | None => None,
                         Some(_) => panic!(),
-                        None => None,
                     } {
-                        let max_bytes = if let Some(arg) = &instr.args.get(2) {
-                            arg_to_integer(arg)
-                        } else {
-                            i64::MAX
-                        };
+                        let max_bytes = instr.args.get(2).map_or(i64::MAX, &arg_to_integer);
 
                         let mut bytes_read = 0;
                         loop {
@@ -740,7 +801,7 @@ impl<'lu> ParseUnit<'lu> {
                             let x = memory
                                 .borrow()
                                 .get(&(addr + bytes_read))
-                                .cloned()
+                                .copied()
                                 .unwrap_or(0);
                             args.push(x);
                             if x == 0 && max_bytes == i64::MAX {
@@ -751,16 +812,12 @@ impl<'lu> ParseUnit<'lu> {
                     }
 
                     if let Some(InstrArg::String(strng)) = &instr.args.get(1) {
-                        let max_bytes = if let Some(arg) = instr.args.get(2) {
-                            arg_to_integer(arg)
-                        } else {
-                            i64::MAX
-                        };
+                        let max_bytes = instr.args.get(2).map_or(i64::MAX, &arg_to_integer);
 
                         let bytes = strng.as_bytes();
 
                         for i in 0..max_bytes.min(bytes.len() as i64) {
-                            args.push(bytes[i as usize] as i64)
+                            args.push(i64::from(bytes[i as usize]));
                         }
                     }
 
@@ -772,7 +829,7 @@ impl<'lu> ParseUnit<'lu> {
                             0
                         }
 
-                        Err(ferr) => ferr.raw_os_error().map(|x| x as i64).unwrap_or(i64::MIN),
+                        Err(ferr) => ferr.raw_os_error().map_or(i64::MIN, i64::from),
                     };
 
                     memory.borrow_mut().insert(0, exit_code);
@@ -867,7 +924,7 @@ impl Instruction {
                 Some(Token::Memory(mem)) => InstrArg::Memory(*mem),
                 Some(Token::Label(lbl)) => InstrArg::Label(lbl.clone()),
                 Some(Token::Ident(ident)) if ident.len() == 1 => {
-                    InstrArg::Integer(ident.as_bytes()[0] as i64)
+                    InstrArg::Integer(i64::from(ident.as_bytes()[0]))
                 }
                 Some(Token::String(strng)) => {
                     InstrArg::String(CString::new(strng.as_bytes()).unwrap())
@@ -926,5 +983,8 @@ enum InstrType {
     WriteStack,
     CallIf,
     HasInput,
-    File,
+    FileInfo,
+    ReadFile,
+    WriteFile,
+    Load,
 }

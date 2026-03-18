@@ -23,16 +23,16 @@ impl LineBuilder {
         let mut tokens = Vec::new();
         while self.cursor < self.chrs.len() {
             match self.next_token() {
-                Ok(Token::None) => continue,
+                Ok(Token::None) => (),
                 Ok(tok) => tokens.push(tok),
                 Err(err_msg) => {
-                    eprintln!("{}", err_msg);
+                    eprintln!("{err_msg}");
                     break;
                 }
             }
         }
 
-        if let Some(Token::EOF) = tokens.last() {
+        if matches!(tokens.last(), Some(Token::EOF)) {
             tokens.pop();
         }
 
@@ -52,12 +52,13 @@ impl LineBuilder {
                     None => return Err("Malformed identifier".into()),
                 },
                 '&' => match self.lex_memory() {
-                    Ok(Memory::Doubled(int)) => return Ok(Token::DoubleMemory(int as i64)),
-                    Ok(Memory::Integer(int)) => return Ok(Token::Memory(int as i64)),
+                    Ok(Memory::Doubled(int)) if int < i64::MAX as u64 => return Ok(Token::DoubleMemory(int as i64)),
+                    Ok(Memory::Integer(int)) if int < i64::MAX as u64  => return Ok(Token::Memory(int as i64)),
                     Ok(Memory::Keyword(kw)) => match kw.as_str() {
                         "cmp" => return Ok(Token::Memory(-1)),
                         _ => return Err(format!("Unrecognized special memory address: {kw}")),
                     },
+                    Ok(Memory::Doubled(_) | Memory::Integer(_)) => return Err("Illegal negative memory address".to_string()),
                     Err(e) => return Err(e),
                 },
                 'a'..='z' | 'A'..='Z' => match self.lex_ident(Some(char)) {
@@ -83,7 +84,7 @@ impl LineBuilder {
     fn lex_ident(&mut self, first_char: Option<char>) -> Option<Result<String, String>> {
         let mut strng = String::new();
         if let Some(char) = first_char {
-            strng.push(char)
+            strng.push(char);
         }
         while let Some(char) = self.advance() {
             match char {
@@ -109,14 +110,14 @@ impl LineBuilder {
             match char {
                 '\\' => {
                     was_last_backslash = !was_last_backslash;
-                    strng.push(char)
+                    strng.push(char);
                 }
                 '"' if !was_last_backslash => return Some(strng),
                 _ => strng.push(char),
             }
         }
 
-        Some(strng)
+        None
     }
 
     fn backtrack(&mut self) {
@@ -137,11 +138,11 @@ impl LineBuilder {
                 }
                 'a'..='z' if !is_number && !is_doubled => {
                     is_special = true;
-                    strng.push(char)
+                    strng.push(char);
                 }
                 '0'..='9' if !is_special => {
                     is_number = true;
-                    strng.push(char)
+                    strng.push(char);
                 }
                 '_' => {}
                 ' ' | '\t' | '\r' | '\n' => {
@@ -168,7 +169,7 @@ impl LineBuilder {
     fn lex_number(&mut self, first_char: Option<char>) -> Result<Number, String> {
         let mut strng = String::new();
         if let Some(char) = first_char {
-            strng.push(char)
+            strng.push(char);
         }
 
         while let Some(char) = self.advance() {
@@ -193,7 +194,7 @@ impl LineBuilder {
     }
 
     fn advance(&mut self) -> Option<char> {
-        let chr = self.chrs.get(self.cursor).cloned();
+        let chr = self.chrs.get(self.cursor).copied();
         self.cursor += 1;
         chr
     }
@@ -213,7 +214,9 @@ enum Memory {
 }
 
 impl Line {
-    pub fn lex_line(line: &str) -> Line {
+
+    #[must_use]
+    pub fn lex_line(line: &str) -> Self {
         let mut line_builder = LineBuilder {
             chrs: line.chars().collect(),
             cursor: 0,
@@ -221,16 +224,18 @@ impl Line {
 
         let tokens = line_builder.lex_line();
 
-        Line {
+        Self {
             src: line.to_string(),
             tokens,
         }
     }
 
+    #[must_use]
     pub fn src(&self) -> &str {
         &self.src
     }
 
+    #[must_use]
     pub fn tokens(&self) -> &[Token] {
         &self.tokens
     }
@@ -265,13 +270,14 @@ impl Unit {
         ret
     }
 
+    #[must_use]
     pub fn lex_lines(lines: Vec<String>) -> Self {
         let mut src = String::new();
         for line in lines {
             src.push_str(&line);
         }
 
-        Unit::lex_source(src)
+        Self::lex_source(src)
     }
 
     fn fully_lex(&mut self) {
@@ -282,9 +288,10 @@ impl Unit {
     }
 
     fn remove_empty_lines(&mut self) {
-        self.lines.retain(|x| !x.tokens.is_empty())
+        self.lines.retain(|x| !x.tokens.is_empty());
     }
 
+    #[must_use]
     pub fn lines(&self) -> &[Line] {
         &self.lines
     }

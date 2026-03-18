@@ -1,29 +1,21 @@
 # strcmp
 'strcmp:
-push &0
-push &1
-push &2
-push &3
+    push &0
+    push &1
 'strcmp_main:
-set &2 &0
-set &3 &1
-deref &2
-deref &3
-cmp &2 &3
-jif 'end &cmp 
-eq &2 0
-jif 'true &cmp
-add &0 1
-add &1 1
-jmp 'strcmp_main
-'true:
-set &cmp 0
-'end:
-pop &3
-pop &2
-pop &1
-pop &0
-ret
+    cmp &&0 &&1
+    jif 'strcmp_end &cmp 
+    eq &&0 0 # we only need to check one of these (if one was 0 and the other wasn't, we would exit on the above line)
+    jif 'strcmp_true &cmp
+    add &0 1
+    add &1 1
+    jmp 'strcmp_main
+'strcmp_true:
+    set &cmp 0
+'strcmp_end:
+    pop &1
+    pop &0
+        ret
 
 
 'mul:

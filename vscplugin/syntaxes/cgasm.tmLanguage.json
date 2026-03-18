@@ -29,7 +29,7 @@
 			"patterns": [
 				{
 					"name": "keyword.cgasm",
-					"match": "\\b(add|sub|mul|div|jif|set|cmp|eq|setif|print|call|ret|nop|input|inputstr|printstr|jmp|deref|retif|pop|push|readstack|writestack|callif|hasinput)\\b"
+					"match": "\\b(add|sub|mul|div|jif|set|cmp|eq|setif|print|call|ret|nop|input|inputstr|printstr|jmp|deref|retif|pop|push|readstack|writestack|callif|hasinput|fileinfo|readfile|load|writefile)\\b"
 				},
 				{
 					"name": "invalid.illegal",
