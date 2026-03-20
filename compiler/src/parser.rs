@@ -412,8 +412,9 @@ impl<'lu> ParseUnit<'lu> {
         }
     }
 
-    pub fn better_execute(&self) {
-        let mut memory: RefCell<HashMap<i64, i64>> = RefCell::new(HashMap::new());
+    pub fn better_execute(&self, memory: Option<&RefCell<HashMap<i64, i64>>>) {
+        let mut owned_memory = RefCell::new(HashMap::new());
+        let mut memory: &RefCell<HashMap<i64, i64>> = memory.unwrap_or(&owned_memory);
         let mut ret_addr_stack: Vec<i64> = Vec::new();
         let mut stack: Vec<i64> = Vec::new();
         let mut inputs = self.inputs.clone();
@@ -757,7 +758,7 @@ impl<'lu> ParseUnit<'lu> {
                         }
                     }
 
-                    run(&data, Some(args));
+                    run(&data, Some(args), Some(memory));
                 }
                 InstrType::Add => {
                     let mut string = String::new();
@@ -825,7 +826,7 @@ impl<'lu> ParseUnit<'lu> {
 
                     let exit_code = match file {
                         Ok(file) => {
-                            run(&file, Some(args));
+                            run(&file, Some(args), None);
                             0
                         }
 

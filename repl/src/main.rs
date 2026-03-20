@@ -36,9 +36,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
 
                 if let Ok(file) = fs::read_to_string(filename) {
-                    run(file.as_str(), Some(inputs));
+                    run(file.as_str(), Some(inputs), None);
                 } else if let Ok(file) = fs::read_to_string(format!("{filename}.cgasm")) {
-                    run(file.as_str(), Some(inputs));
+                    run(file.as_str(), Some(inputs), None);
                 } else {
                     println!("failed to open file: {filename}")
                 }
@@ -52,6 +52,6 @@ fn main() -> Result<(), Box<dyn Error>> {
             lines.push_str(&strng);
         }
 
-        run(&lines, None);
+        run(&lines, None, None);
     }
 }
